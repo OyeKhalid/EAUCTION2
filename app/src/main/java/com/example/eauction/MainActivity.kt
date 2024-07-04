@@ -1,37 +1,26 @@
 package com.example.eauction
 
-import android.annotation.SuppressLint
-import android.content.ContentValues.TAG
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import android.view.View
+import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.example.eauction.adapter.MyAdapter
-import com.example.eauction.databinding.ActivityLoginBinding
+import com.example.eauction.adapter.AuctionAdapter
 import com.example.eauction.databinding.ActivityMainBinding
-import com.example.eauction.model.Item
-import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.example.eauction.model.Auction
+import com.example.eauction.persistence.PreferencesManager
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.DocumentChange
-import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.QuerySnapshot
-import com.google.firebase.firestore.toObject
+
 
 class MainActivity : AppCompatActivity() {
 
-//    private lateinit var rv : RecyclerView
-//    private lateinit var myAdapter : MyAdapter
-//    private lateinit var itemArrayList: ArrayList<Item>
-
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var firebaseFirestore: FirebaseFirestore
     private lateinit var firebaseAuth: FirebaseAuth
-
+    private lateinit var firestore: FirebaseFirestore
+    private lateinit var preferencesManager: PreferencesManager
+    private lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,67 +28,53 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         firebaseAuth = FirebaseAuth.getInstance()
-        firebaseFirestore = FirebaseFirestore.getInstance()
+        firestore = FirebaseFirestore.getInstance()
+        preferencesManager = PreferencesManager(this)
 
-        val userId = firebaseAuth.currentUser!!.uid
-        val ref = firebaseFirestore.collection("products").document()
-        ref.get()
-            .addOnSuccessListener {
-                if(it != null){
-                    val title = it.data?.get("title")?.toString()
-                    val desc = it.data?.get("description")?.toString()
-                    val price = it.data?.get("price")?.toString()
-                    val endate = it.data?.get("endDate")?.toString()
+        val userData = preferencesManager.getUserData()
+        val userType = userData["userType"]
 
-                    binding.title.setText(title)
-                    binding.desc.setText(desc)
-                    binding.price.setText(price)
-                    binding.date.setText(endate)
+        if (userType == "Seller") {
+            binding.createButton.visibility = View.VISIBLE
+        } else {
+            binding.createButton.visibility = View.GONE
+        }
 
-                    Toast.makeText(this,"DATA IS FETCHED SUCCESSFULLY",Toast.LENGTH_SHORT).show()
+        binding.createButton.setOnClickListener {
+            val intent = Intent(this, CreateAuctionActivity::class.java)
+            startActivity(intent)
+        }
 
-                }
+        binding.auctionRecyclerView.layoutManager = LinearLayoutManager(this)
 
+        binding.logout.setOnClickListener {
+            preferencesManager.clearUserData()
+            Intent(this, LoginActivity::class.java).apply {
+                startActivity(this)
             }
-            .addOnFailureListener {
+        }
 
-                Toast.makeText(this, "Data Fetching Failed", Toast.LENGTH_SHORT).show()
+    }
 
+    override fun onResume() {
+        super.onResume()
+        val userData = preferencesManager.getUserData()
+        val userType = userData["userType"]
+        loadAuctions(userType == "Seller")
+    }
+
+    private fun loadAuctions(isSeller: Boolean) {
+        val auctionList = mutableListOf<Auction>()
+        firestore.collection("auctions").get().addOnSuccessListener { documents ->
+            for (document in documents) {
+                val auction = document.toObject(Auction::class.java)
+                auctionList.add(auction)
             }
 
-
-//        val floatbutton : FloatingActionButton = findViewById(R.id.floating_add)
-//
-//        floatbutton.setOnClickListener{
-//            startActivity(Intent(this,AddProduct::class.java))
-//        }
-
-//        rv = findViewById(R.id.recyclerView)
-//        rv.layoutManager = LinearLayoutManager(this)
-//        rv.setHasFixedSize(true)
-//
-//        itemArrayList = arrayListOf()
-//        myAdapter = MyAdapter(itemArrayList)
-//        rv.adapter = myAdapter
-//
-//        EventChangeListner()
-//
-//    }
-//
-//    @SuppressLint("NotifyDataSetChanged")
-//    private fun EventChangeListner() {
-//        db = FirebaseFirestore.getInstance()
-//        db.collection("products")
-//            .get()w
-//            .addOnSuccessListener { result ->
-//                for (document in result) {
-//                    val item = document.toObject(Item::class.java)
-//                    itemArrayList.add(item)
-//                }
-//                myAdapter.notifyDataSetChanged()
-//            }
-//            .addOnFailureListener { exception ->
-//                // Handle the error
-//            }
+            val adapter = AuctionAdapter(auctionList, isSeller)
+            binding.auctionRecyclerView.adapter = adapter
+        }.addOnFailureListener { exception ->
+            Toast.makeText(this, "Error getting documents: $exception", Toast.LENGTH_SHORT).show()
+        }
     }
 }
